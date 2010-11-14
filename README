@@ -1,0 +1,30 @@
+Net::Proxy::Type version 0.02
+===========================================
+
+The Net::Proxy::Type is a module which can help you to get proxy type if you know host and port of the proxy server.
+Supported proxy types for now are: http proxy, socks4 proxy and socks5 proxy.
+
+INSTALLATION
+
+To install this module type the following:
+
+   perl Makefile.PL
+   make
+   make test
+   make install
+
+DEPENDENCIES
+
+This module requires these other modules and libraries:
+
+  Exporter
+  IO::Socket::INET
+  IO::Select
+
+COPYRIGHT AND LICENCE
+
+Copyright (C) 2010 by Oleg G
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+

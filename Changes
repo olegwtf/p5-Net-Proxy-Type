@@ -1,0 +1,11 @@
+Revision history for Perl extension Net::Proxy::Type.
+
+0.01  Thu Nov 04 20:03:56 2010
+      - original version;
+
+0.02  Fri Nov 05 14:20:10 2010
+      - documentation bug fixes
+      - regexp to parse proxy address fixes
+      - %checkers in get() replaced by @checkers to support sorted order
+      - check mask parameter added to get() method
+

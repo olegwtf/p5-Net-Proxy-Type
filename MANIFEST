@@ -1,0 +1,6 @@
+Changes
+Makefile.PL
+MANIFEST
+README
+t/Net-Proxy-Type.t
+lib/Net/Proxy/Type.pm
