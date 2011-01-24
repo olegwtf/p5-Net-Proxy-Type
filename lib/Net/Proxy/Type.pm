@@ -231,10 +231,11 @@ sub is_socks5
 	}
 	
 	my $c = substr($buf, 1, 1);
-	if($c eq "\x01" || $c eq "\x02") {
+	if($c eq "\x01" || $c eq "\x02" || $c eq "\xff") {
 		# this is socks5 proxy with authentification
-		return 0 if $self->{socks5_strict};
-		return !$self->{noauth};
+		if($self->{noauth} || $self->{socks5_strict}) {
+			goto IS_SOCKS5_ERROR;
+		}
 	}
 	else {
 		if($c ne "\x00") {
