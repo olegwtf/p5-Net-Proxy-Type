@@ -1,4 +1,4 @@
-Net::Proxy::Type version 0.02
+Net::Proxy::Type version 0.03
 ===========================================
 
 The Net::Proxy::Type is a module which can help you to get proxy type if you know host and port of the proxy server.

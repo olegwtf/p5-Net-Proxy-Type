@@ -9,3 +9,11 @@ Revision history for Perl extension Net::Proxy::Type.
       - %checkers in get() replaced by @checkers to support sorted order
       - check mask parameter added to get() method
 
+0.03  Sun Jan 23 21:48:58 2011
+      - get_as_string() method added
+      - new options in the constructor:
+          url
+          keyword
+          noauth
+      - functionality related to the new options in the constructor
+      

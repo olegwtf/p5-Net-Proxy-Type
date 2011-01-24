@@ -3,6 +3,7 @@ package Net::Proxy::Type;
 use strict;
 use Exporter;
 use Errno qw(EWOULDBLOCK);
+use Carp;
 use IO::Socket::INET qw(:DEFAULT :crlf);
 use IO::Select;
 
@@ -14,7 +15,7 @@ use constant {
 	SOCKS5_PROXY  => 4,
 };
 
-our $VERSION = 0.02;
+our $VERSION = 0.03;
 our @ISA = qw(Exporter);
 our @EXPORT_OK = qw(HTTP_PROXY SOCKS4_PROXY SOCKS5_PROXY UNKNOWN_PROXY DEAD_PROXY);
 our %EXPORT_TAGS = (types => [qw(HTTP_PROXY SOCKS4_PROXY SOCKS5_PROXY UNKNOWN_PROXY DEAD_PROXY)]);
@@ -22,6 +23,8 @@ our %EXPORT_TAGS = (types => [qw(HTTP_PROXY SOCKS4_PROXY SOCKS5_PROXY UNKNOWN_PR
 our $CONNECT_TIMEOUT = 5;
 our $WRITE_TIMEOUT = 5;
 our $READ_TIMEOUT = 5;
+our $URL = 'http://www.google.com/';
+our $KEYWORD = 'google';
 our %NAME = (
 	UNKNOWN_PROXY, 'UNKNOWN_PROXY',
 	DEAD_PROXY, 'DEAD_PROXY',
@@ -41,11 +44,15 @@ sub new
 	$self->{http_strict} = $opts{http_strict} || $opts{strict};
 	$self->{socks4_strict} = $opts{socks4_strict} || $opts{strict};
 	$self->{socks5_strict} = $opts{socks5_strict} || $opts{strict};
+	$self->{url} = $opts{url} || $URL;
+	($self->{host}) = $self->{url} =~ m!^https?://([^:/]+)! or croak('Incorrect url specified. Should be https?://[^:/]+');
+	$self->{keyword} = $opts{keyword} || $KEYWORD;
+	$self->{noauth} = $opts{noauth};
 	
 	bless $self, $class;
 }
 
-foreach my $key qw(connect_timeout write_timeout read_timeout http_strict socks4_strict socks5_strict)
+foreach my $key qw(connect_timeout write_timeout read_timeout http_strict socks4_strict socks5_strict keyword noauth)
 { # generate sub's for get/set object properties using closure
       no strict 'refs';
       *$key = sub
@@ -73,6 +80,18 @@ sub strict
 	$self->{http_strict} = $strict;
 	$self->{socks4_strict} = $strict;
 	$self->{socks5_strict} = $strict;
+}
+
+sub url
+{ # set or get url
+	my $self = shift;
+	
+	if(defined($_[0])) {
+		($self->{host}) = $_[0] =~ m!^https?://([^:/]+)! or croak('Incorrect url specified. Should be https?://[^:/]+');
+		return $self->{url} = $_[0];
+	}
+	
+	return $self->{url};
 }
 
 sub get
@@ -112,6 +131,14 @@ sub get
 	}
 	
 	return UNKNOWN_PROXY;
+}
+
+sub get_as_string
+{ # same as get(), but return string
+	my ($self, $proxyaddr, $proxyport, $checkmask) = @_;
+	
+	my $type = $self->get($proxyaddr, $proxyport, $checkmask);
+	return $NAME{$type};
 }
 
 sub is_http
@@ -157,7 +184,7 @@ sub is_socks4
 	my $socket = $self->_create_socket($proxyaddr, $proxyport)
 		or return undef;
 		
-	unless($self->_write_to_socket($socket, "\x04\x01" . pack('n', 80) . inet_aton("www.google.com") . "\x00")) {
+	unless($self->_write_to_socket($socket, "\x04\x01" . pack('n', 80) . inet_aton($self->{host}) . "\x00")) {
 		goto IS_SOCKS4_ERROR;
 	}
 	
@@ -206,17 +233,20 @@ sub is_socks5
 	my $c = substr($buf, 1, 1);
 	if($c eq "\x01" || $c eq "\x02") {
 		# this is socks5 proxy with authentification
-		# no more checks, simply return true
+		return 0 if $self->{socks5_strict};
+		return !$self->{noauth};
 	}
 	else {
 		if($c ne "\x00") {
 			goto IS_SOCKS5_ERROR;
 		}
 		
-		unless($self->_write_to_socket($socket, "\x05\x01\x00\x01" . inet_aton("www.google.com") . pack('n', 80))) {
+		unless($self->_write_to_socket($socket, "\x05\x01\x00\x01" . inet_aton($self->{host}) . pack('n', 80))) {
 			goto IS_SOCKS5_ERROR;
 		}
 		
+		# minimum length of response is 10
+		# it is not necessarily to read whole response
 		$rc = $self->_read_from_socket($socket, $buf, 10);
 		if(!$rc || substr($buf, 1, 1) ne "\x00") {
 			goto IS_SOCKS5_ERROR;
@@ -242,13 +272,13 @@ sub is_socks5
 }
 
 sub _http_request
-{ # do http request for some host, `google.com' for now
+{ # do http request for some host
 	my ($self, $socket) = @_;
-	$self->_write_to_socket($socket, 'GET http://www.google.com/ HTTP/1.0'. CRLF . 'Host: www.google.com' . CRLF . CRLF);
+	$self->_write_to_socket($socket, 'GET ' . $self->{url} . ' HTTP/1.0'. CRLF . 'Host: ' . $self->{host} . CRLF . CRLF);
 }
 
 sub _is_strict_response
-{ # to make sure about proxy type we will read response header and try to find keyword, `google' for now
+{ # to make sure about proxy type we will read response header and try to find keyword
   # without this check most of http servers may be recognized as http proxy, because its response after _http_request() begins from `HTTP'
 	my ($self, $socket) = @_;
 	my ($header, $rc, $buf, $http_ok);
@@ -268,7 +298,7 @@ sub _is_strict_response
 			}
 			
 			$header .= $buf;
-			if(index($header, 'google') != -1) {
+			if(index($header, $self->{keyword}) != -1) {
 				# keyword found - ok
 				return 1;
 			}
@@ -412,6 +442,9 @@ Net::Proxy::Type - Get proxy type
  my $proxytype = Net::Proxy::Type->new();
  my $type = $proxytype->get('localhost:1111');
  warn 'proxy type is: ', $Net::Proxy::Type::NAME{$type};
+ 
+ # same as
+ warn 'proxy type is: ', Net::Proxy::Type->new()->get_as_string('localhost:1111');
 
 =back
 
@@ -495,8 +528,11 @@ to specify the initial state. The following options correspond to attribute meth
    socks4_strict        undef
    socks5_strict        undef
    strict               undef
+   url                  $Net::Proxy::Type::URL
+   keyword              $Net::Proxy::Type::KEYWORD
+   noauth               undef
 
-Options description:
+Description:
 
    connect_timeout - maximum number of seconds to wait until connection success
    write_timeout   - maximum number of seconds to wait until write operation success
@@ -506,6 +542,9 @@ Options description:
    socks4_strict   - use or not strict method to check socks4 proxyes
    socks5_strict   - use or not strict method to check socks5 proxyes
    strict          - set value of all *_strict options above to this value (about strict checking see below)
+   url             - url which header should be checked for keyword when strict mode enabled
+   keyword         - keyword which must be found in the url header
+   noauth          - if proxy works, but authorization required, then false will be returned if noauth has true value
 
 =item $proxytype->get($proxyaddress, $checkmask=undef)
 
@@ -522,6 +561,12 @@ Example:
   # if it is HTTP_PROXY returned value will be UNKNOWN_PROXY
   # because there is no check for HTTP_PROXY
   my $type = $proxytype->get('localhost:1080', SOCKS4_PROXY | SOCKS5_PROXY);
+
+=item $proxytype->get_as_string($proxyaddress, $checkmask=undef)
+
+=item $proxytype->get_as_string($proxyhost, $proxyport, $checkmask=undef)
+
+Same as get(), but returns string instead of constant.
 
 =item $proxytype->is_http($proxyaddress)
 
@@ -582,18 +627,24 @@ Methods below gets or sets corresponding options from the constructor:
 
 =item $proxytype->socks5_strict($boolean)
 
+=item $proxytype->url($url)
+
+=item $proxytype->keyword($keyword)
+
+=item $proxytype->noauth($boolean)
+
 =back
 
 =head2 STRICT CHECKING
 
-How does this module work? To check proxy type it simply do some request to the proxy server and checks response. Each proxy
-type have its own response type. For socks proxyes we can do socks initialize request and response should be as its
+How this module works? To check proxy type it simply do some request to the proxy server and checks response. Each proxy
+type has its own response type. For socks proxyes we can do socks initialize request and response should be as its
 described in socks proxy documentation. For http proxyes we can do http request to some host and check for example
 if response begins from `HTTP'. Problem is that if we, for example, will check `yahoo.com:80' for http proxy this way,
 we will get positive response, but `yahoo.com' is not a proxy it is a web server. So strict checking helps us to avoid this
-problems. What we do? We send http request to www.google.com via proxy and checks if response header contains `google'
-keyword (`google' keyword now could be found in `Set-Cookie' header). If there is no keyword in the header it means
-that this proxy is not of the cheking type. This is not best solution, but it works for now. So strict mode recommended
+problems. What we do? We send http request to the server, specified by the `url' option in the constructor via proxy and checks
+if response header contains keyword, specified by `keyword' option. If there is no keyword in the header it means
+that this proxy is not of the cheking type. This is not best solution, but it works. So strict mode recommended
 to check http proxyes if you want to cut off such "proxyes" as `yahoo.com:80', but you can use it with other proxy types
 too.
 
@@ -625,6 +676,10 @@ Following variables available (not importable):
 
 =item $READ_TIMEOUT = 5
 
+=item $URL = 'http://www.google.com/'
+
+=item $KEYWORD = 'google'
+
 =item %NAME
 
 Dictionary between proxy type constant and proxy type name
@@ -637,4 +692,3 @@ Copyright 2010 Oleg G <oleg@cpan.org>.
 
 This library is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
-
