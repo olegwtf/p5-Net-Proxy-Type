@@ -1,13 +1,8 @@
 Revision history for Perl extension Net::Proxy::Type.
 
-0.01  Thu Nov 04 20:03:56 2010
-      - original version;
-
-0.02  Fri Nov 05 14:20:10 2010
-      - documentation bug fixes
-      - regexp to parse proxy address fixes
-      - %checkers in get() replaced by @checkers to support sorted order
-      - check mask parameter added to get() method
+0.04 Thu Jul 14 23:15:03 2011
+      - return connection time in list context
+      - more tests added
 
 0.03  Sun Jan 23 21:48:58 2011
       - get_as_string() method added
@@ -16,4 +11,13 @@ Revision history for Perl extension Net::Proxy::Type.
           keyword
           noauth
       - functionality related to the new options in the constructor
-      
+
+0.02  Fri Nov 05 14:20:10 2010
+      - documentation bug fixes
+      - regexp to parse proxy address fixes
+      - %checkers in get() replaced by @checkers to support sorted order
+      - check mask parameter added to get() method
+
+0.01  Thu Nov 04 20:03:56 2010
+      - original version;
+
