@@ -142,8 +142,8 @@ sub get_as_string
 { # same as get(), but return string
 	my ($self, $proxyaddr, $proxyport, $checkmask) = @_;
 	
-	my ($type, $con_time) = $self->get($proxyaddr, $proxyport, $checkmask);
-	return wantarray ? ($NAME{$type}, $con_time) : $NAME{$type};
+	my $type = $self->get($proxyaddr, $proxyport, $checkmask);
+	return $NAME{$type};
 }
 
 sub is_http
@@ -409,7 +409,8 @@ sub _create_socket
 	}
 	
 	my $conn_start = time();
-	my $socket = $self->_open_socket($proxyaddr, $proxyport);
+	my $socket = $self->_open_socket($proxyaddr, $proxyport)
+		or return;
 	
 	return ($socket, time() - $conn_start);
 }
@@ -575,7 +576,7 @@ Example:
 
 =item $proxytype->get_as_string($proxyhost, $proxyport, $checkmask=undef)
 
-Same as get(), but returns string instead of constant.
+Same as get(), but returns string instead of constant. In all contexts returns only one value.
 
 =item $proxytype->is_http($proxyaddress)
 
@@ -583,7 +584,7 @@ Same as get(), but returns string instead of constant.
 
 Check is this is http proxy. Returned value is 1 if it is http proxy, 0 if it is not http proxy
 and undef if proxy host not connectable or proxy address is not valid. In list context returns array
-where second element is connect time.
+where second element is connect time (empty array if proxy not connectable).
 
 =item $proxytype->is_socks4($proxyaddress)
 
@@ -591,7 +592,7 @@ where second element is connect time.
 
 Check is this is socks4 proxy. Returned value is 1 if it is socks4 proxy, 0 if it is not socks4 proxy
 and undef if proxy host not connectable or proxy address is not valid. In list context returns array
-where second element is connect time.
+where second element is connect time (empty array if proxy not connectable).
 
 =item $proxytype->is_socks5($proxyaddress)
 
@@ -599,7 +600,7 @@ where second element is connect time.
 
 Check is this is socks5 proxy. Returned value is 1 if it is socks5 proxy, 0 if it is not socks5 proxy
 and undef if proxy host not connectable or proxy address is not valid. In list context returns array
-where second element is connect time.
+where second element is connect time (empty array if proxy not connectable).
 
 =item $proxytype->timeout($timeout)
 
