@@ -52,7 +52,7 @@ sub new
 	bless $self, $class;
 }
 
-foreach my $key qw(connect_timeout write_timeout read_timeout http_strict socks4_strict socks5_strict keyword noauth)
+foreach my $key (qw(connect_timeout write_timeout read_timeout http_strict socks4_strict socks5_strict keyword noauth))
 { # generate sub's for get/set object properties using closure
       no strict 'refs';
       *$key = sub
