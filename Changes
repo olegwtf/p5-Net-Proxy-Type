@@ -1,5 +1,8 @@
 Revision history for Perl extension Net::Proxy::Type.
 
+0.05 Thu Jun 14 17:24:32 2012
+      - fix for qw() deprication warning (rt #77815)
+
 0.04 Thu Jul 14 23:15:03 2011
       - return connection time in list context
       - more tests added
