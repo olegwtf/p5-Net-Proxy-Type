@@ -416,7 +416,7 @@ sub _create_socket
 }
 
 sub _open_socket
-{ # open non-blocking socket
+{ # blocking open for non-blocking socket
 	my ($self, $host, $port) = @_;
 	my $socket = IO::Socket::INET->new(PeerHost => $host, PeerPort => $port, Timeout => $self->{connect_timeout}, Blocking => 0);
 	
