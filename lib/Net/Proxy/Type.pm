@@ -161,7 +161,13 @@ sub is_http
 	my ($buf, $rc);
 	unless($self->{http_strict}) {
 		# simple check. does response begins from `HTTP'?
-		$rc = $self->_read_from_socket($socket, $buf, 4);
+		$rc = $self->_read_from_socket($socket, $buf, 12);
+		my ($code) = $buf =~ /(\d+$)/;
+		if ($code == 407 && $self->{noauth}) {
+			# proxy auth required
+			goto IS_HTTP_ERROR;
+		}
+		
 		if(!$rc || $buf ne 'HTTP') {
 			goto IS_HTTP_ERROR;
 		}
@@ -280,7 +286,7 @@ sub is_socks5
 sub _http_request
 { # do http request for some host
 	my ($self, $socket) = @_;
-	$self->_write_to_socket($socket, 'GET ' . $self->{url} . ' HTTP/1.0'. CRLF . 'Host: ' . $self->{host} . CRLF . CRLF);
+	$self->_write_to_socket($socket, 'GET ' . $self->{url} . ' HTTP/1.1'. CRLF . 'Host: ' . $self->{host} . CRLF . CRLF);
 }
 
 sub _is_strict_response
@@ -295,15 +301,22 @@ sub _is_strict_response
 			last;
 		}
 		else {
+			$header .= $buf;
+			
 			unless($http_ok) {
-				if(index($buf, 'HTTP') != 0) {
-					last;
+				if (length($header) >= 12) {
+					if (my ($code) = $header =~ m!^HTTP/\d\.\d (\d{4})!) {
+						if ((caller(1))[3] eq __PACKAGE__.'::is_http' && $code == 407 && $self->{noauth}) {
+							last;
+						}
+						$http_ok = 1;
+					}
+					else {
+						last;
+					}
 				}
-				
-				$http_ok = 1;
 			}
 			
-			$header .= $buf;
 			if(index($header, $self->{keyword}) != -1) {
 				# keyword found - ok
 				return 1;
