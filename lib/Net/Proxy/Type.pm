@@ -13,22 +13,26 @@ use constant {
 	HTTP_PROXY    =>  1,
 	SOCKS4_PROXY  =>  2,
 	SOCKS5_PROXY  =>  4,
+	HTTPS_PROXY   =>  8
 };
 
 our $VERSION = '0.05';
 our @ISA = qw(Exporter);
-our @EXPORT_OK = qw(HTTP_PROXY SOCKS4_PROXY SOCKS5_PROXY UNKNOWN_PROXY DEAD_PROXY);
-our %EXPORT_TAGS = (types => [qw(HTTP_PROXY SOCKS4_PROXY SOCKS5_PROXY UNKNOWN_PROXY DEAD_PROXY)]);
+our @EXPORT_OK = qw(HTTP_PROXY HTTPS_PROXY SOCKS4_PROXY SOCKS5_PROXY UNKNOWN_PROXY DEAD_PROXY);
+our %EXPORT_TAGS = (types => [qw(HTTP_PROXY HTTPS_PROXY SOCKS4_PROXY SOCKS5_PROXY UNKNOWN_PROXY DEAD_PROXY)]);
 
 our $CONNECT_TIMEOUT = 5;
 our $WRITE_TIMEOUT = 5;
 our $READ_TIMEOUT = 5;
 our $URL = 'http://www.google.com/';
+our $HTTPS_URL = 'https://www.google.com/';
 our $KEYWORD = 'google';
+our $HTTPS_KEYWORD = 'google';
 our %NAME = (
 	UNKNOWN_PROXY, 'UNKNOWN_PROXY',
 	DEAD_PROXY, 'DEAD_PROXY',
 	HTTP_PROXY, 'HTTP_PROXY',
+	HTTPS_PROXY, 'HTTPS_PROXY',
 	SOCKS4_PROXY, 'SOCKS4_PROXY',
 	SOCKS5_PROXY, 'SOCKS5_PROXY',
 );
@@ -36,23 +40,28 @@ our %NAME = (
 sub new
 {
 	my ($class, %opts) = @_;
-	my $self = {};
+	my $self = bless {}, $class;
 	
 	$self->{connect_timeout} = $opts{connect_timeout} || $opts{timeout} || $CONNECT_TIMEOUT;
 	$self->{write_timeout} = $opts{write_timeout} || $opts{timeout} || $WRITE_TIMEOUT;
 	$self->{read_timeout} = $opts{read_timeout} || $opts{timeout} || $READ_TIMEOUT;
 	$self->{http_strict} = $opts{http_strict} || $opts{strict};
+	$self->{https_strict} = $opts{https_strict} || $opts{strict};
 	$self->{socks4_strict} = $opts{socks4_strict} || $opts{strict};
 	$self->{socks5_strict} = $opts{socks5_strict} || $opts{strict};
-	$self->{url} = $opts{url} || $URL;
-	($self->{host}) = $self->{url} =~ m!^https?://([^:/]+)! or croak('Incorrect url specified. Should be https?://[^:/]+');
+	$self->url($opts{url} || $URL);
+	$self->https_url($opts{https_url} || $HTTPS_URL);
 	$self->{keyword} = $opts{keyword} || $KEYWORD;
+	$self->{https_keyword} = $opts{https_keyword} || $HTTPS_KEYWORD;
 	$self->{noauth} = $opts{noauth};
 	
-	bless $self, $class;
+	$self;
 }
 
-foreach my $key (qw(connect_timeout write_timeout read_timeout http_strict socks4_strict socks5_strict keyword noauth))
+foreach my $key (qw(
+	connect_timeout write_timeout read_timeout http_strict https_strict 
+	socks4_strict socks5_strict keyword https_keyword noauth
+))
 { # generate sub's for get/set object properties using closure
       no strict 'refs';
       *$key = sub
@@ -78,6 +87,7 @@ sub strict
 	my ($self, $strict) = @_;
 	
 	$self->{http_strict} = $strict;
+	$self->{https_strict} = $strict;
 	$self->{socks4_strict} = $strict;
 	$self->{socks5_strict} = $strict;
 }
@@ -87,11 +97,25 @@ sub url
 	my $self = shift;
 	
 	if(defined($_[0])) {
-		($self->{host}) = $_[0] =~ m!^https?://([^:/]+)! or croak('Incorrect url specified. Should be https?://[^:/]+');
+		($self->{host}) = $_[0] =~ m!^http://([^:/]+)!
+			or croak('Incorrect url specified. Should be http://[^:/]+');
 		return $self->{url} = $_[0];
 	}
 	
 	return $self->{url};
+}
+
+sub https_url
+{ # set or get https url
+	my $self = shift;
+	
+	if(defined($_[0])) {
+		($self->{https_host}, $self->{https_pathquery}) = $_[0] =~ m!^https://([^:/]+)(/.*)?!
+			or croak('Incorrect url specified. Should be https://[^:/]+(/.*)?');
+		return $self->{https_url} = $_[0];
+	}
+	
+	return $self->{https_url};
 }
 
 sub get
@@ -112,7 +136,7 @@ sub get
 		}
 	}
 	
-	my @checkers = (HTTP_PROXY, \&is_http, SOCKS4_PROXY, \&is_socks4, SOCKS5_PROXY, \&is_socks5);
+	my @checkers = (HTTPS_PROXY, \&is_https, HTTP_PROXY, \&is_http, SOCKS4_PROXY, \&is_socks4, SOCKS5_PROXY, \&is_socks5);
 	my $con_time = 0;
 	
 	for(my $i=0; $i<@checkers; $i+=2) {
@@ -168,13 +192,13 @@ sub is_http
 			goto IS_HTTP_ERROR;
 		}
 		
-		if(!$rc || $buf ne 'HTTP') {
+		if(!$rc || substr($buf, 0, 4) ne 'HTTP') {
 			goto IS_HTTP_ERROR;
 		}
 	}
 	else {
 		# strict check. does response header contains keyword?
-		unless($self->_is_strict_response($socket)) {
+		unless($self->_is_strict_response($socket, $self->{keyword})) {
 			goto IS_HTTP_ERROR;
 		}
 	}
@@ -183,6 +207,53 @@ sub is_http
 	return wantarray ? (1, $con_time) : 1;
 	
 	IS_HTTP_ERROR:
+		$socket->close();
+		return wantarray ? (0, $con_time) : 0;
+}
+
+sub is_https
+{ # check is this https proxy
+	my ($self, $proxyaddr, $proxyport) = @_;
+	
+	my ($socket, $con_time) = $self->_create_socket($proxyaddr, $proxyport)
+		or return;
+	
+	unless (
+		$self->_write_to_socket(
+			$socket, 'CONNECT '.$self->{https_host}.':443 HTTP/1.1'.CRLF.'Host: '.$self->{https_host}.':443'.CRLF.CRLF
+		)
+	) {
+		goto IS_HTTPS_ERROR;
+	}
+	
+	my $rc = $self->_read_from_socket($socket, my $headers, CRLF.CRLF, 2000);
+	unless ($rc && $headers =~ m!^HTTP/\d.\d 2\d{2}!) {
+		goto IS_HTTPS_ERROR;
+	}
+	
+	if ($self->{https_strict}) {
+		require IO::Socket::SSL;
+		$socket->blocking(1);
+		
+		unless (IO::Socket::SSL->start_SSL($socket, Timeout => $self->{read_timeout})) {
+			goto IS_HTTPS_ERROR;
+		}
+		
+		$socket->blocking(0);
+		$self->_write_to_socket(
+			$socket, 
+			'GET ' . ($self->{https_pathquery}||'/') . ' HTTP/1.1' . CRLF . 'Host: ' . $self->{https_host} . CRLF . CRLF
+		) or goto IS_HTTPS_ERROR;
+		
+		unless ($self->_is_strict_response($socket, $self->{https_keyword})) {
+			goto IS_HTTPS_ERROR;
+		}
+	}
+	
+	$socket->close();
+	return wantarray ? (1, $con_time) : 1;
+	
+	IS_HTTPS_ERROR:
 		$socket->close();
 		return wantarray ? (0, $con_time) : 0;
 }
@@ -210,7 +281,7 @@ sub is_socks4
 			goto IS_SOCKS4_ERROR;
 		}
 		
-		unless($self->_is_strict_response($socket)) {
+		unless($self->_is_strict_response($socket, $self->{keyword})) {
 			goto IS_SOCKS4_ERROR;
 		}
 	}
@@ -269,7 +340,7 @@ sub is_socks5
 				goto IS_SOCKS5_ERROR;
 			}
 		
-			unless($self->_is_strict_response($socket)) {
+			unless($self->_is_strict_response($socket, $self->{keyword})) {
 				goto IS_SOCKS5_ERROR;
 			}
 		}
@@ -292,20 +363,20 @@ sub _http_request
 sub _is_strict_response
 { # to make sure about proxy type we will read response header and try to find keyword
   # without this check most of http servers may be recognized as http proxy, because its response after _http_request() begins from `HTTP'
-	my ($self, $socket) = @_;
+	my ($self, $socket, $keyword) = @_;
 	my ($header, $rc, $buf, $http_ok);
 	
 	while(1) {
-		$rc = $self->_read_from_socket($socket, $buf, 20);
+		$rc = $self->_read_from_socket($socket, $buf, CRLF, 512);
+		
 		unless(defined($rc)) {
 			last;
 		}
 		else {
 			$header .= $buf;
-			
 			unless($http_ok) {
 				if (length($header) >= 12) {
-					if (my ($code) = $header =~ m!^HTTP/\d\.\d (\d{4})!) {
+					if (my ($code) = $header =~ m!^HTTP/\d\.\d (\d{3})!) {
 						if ((caller(1))[3] eq __PACKAGE__.'::is_http' && $code == 407 && $self->{noauth}) {
 							last;
 						}
@@ -317,7 +388,7 @@ sub _is_strict_response
 				}
 			}
 			
-			if(index($header, $self->{keyword}) != -1) {
+			if(index($header, $keyword) != -1) {
 				# keyword found - ok
 				return 1;
 			}
@@ -374,29 +445,34 @@ sub _write_to_socket
 
 sub _read_from_socket
 { # read $limit bytes from non-blocking socket; return 0 if EOF, undef if error, bytes readed on success ($limit)
-	my ($self, $socket, $limit) = @_[0,1,3];
+	my ($self, $socket) = (shift, shift);
+	my $num_limit;
+	my $str_limit;
+	if (@_ == 2) {
+		$num_limit = pop;
+	}
+	else {
+		($str_limit, $num_limit) = @_[1,2];
+	}
 	
 	my $selector = IO::Select->new($socket);
 	my $start = time();
-	my $buf;
-	$_[2] = ''; # clean buffer variable like sysread() do
+	$_[0] = ''; # clean buffer variable like sysread() do
 	
-	while($limit > 0 && time() - $start < $self->{read_timeout}) {
+	while(time() - $start < $self->{read_timeout}) {
 		unless($selector->can_read(1)) {
-			# no data in socket for now, check if timeout expired and try again
+			# no data in socket for now, check is timeout expired and try again
 			next;
 		}
 		
-		my $rc = $socket->sysread($buf, $limit);
+		my $rc = $socket->sysread($_[0], $num_limit, length $_[0]);
 		if(defined($rc)) {
 			# no errors
 			if($rc > 0) {
-				# reduce limit and modify buffer
-				$limit -= $rc;
-				$_[2] .= $buf;
-				if($limit == 0) {
-					# all data successfully readed
-					return length($_[2]);
+				$num_limit -= $rc;
+				
+				if ($num_limit == 0 || (defined $str_limit && index($_[0], $str_limit) != -1)) {
+					return length($_[0]);
 				}
 			}
 			else {
