@@ -228,8 +228,14 @@ sub is_https
 		goto IS_HTTPS_ERROR;
 	}
 	
-	my $rc = $self->_read_from_socket($socket, my $headers, CRLF.CRLF, 2000);
-	unless ($rc && $headers =~ m!^HTTP/\d.\d 2\d{2}!) {
+	$self->_read_from_socket($socket, my $headers, CRLF.CRLF, 2000)
+		or goto IS_HTTPS_ERROR;
+	my ($code) = $headers =~ m!^HTTP/\d.\d (\d{3})!
+		or goto IS_HTTPS_ERROR;
+	if ($code == 407 && ($self->{noauth} || $self->{https_strict})) {
+		goto IS_HTTPS_ERROR;
+	}
+	if (($code < 200 || $code >= 300) && $code != 407) {
 		goto IS_HTTPS_ERROR;
 	}
 	

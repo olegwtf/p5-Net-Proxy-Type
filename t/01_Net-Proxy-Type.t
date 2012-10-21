@@ -33,8 +33,9 @@ kill 15, $pid;
 
 ($pid, $host, $port) = make_fake_https_proxy();
 $pt->https_strict(0);
+$pt->timeout(3);
 is($pt->get($host, $port), Net::Proxy::Type::HTTPS_PROXY, 'non strict get for HTTPS_PROXY');
-diag "next test will take about 15 sec";
+diag "next test will take about 10 sec";
 $pt->strict(1);
 is($pt->get($host, $port), Net::Proxy::Type::UNKNOWN_PROXY, 'strict get for HTTPS_PROXY');
 kill 15, $pid;
