@@ -375,53 +375,16 @@ sub _is_strict_response
 { # to make sure about proxy type we will read response header and try to find keyword
   # without this check most of http servers may be recognized as http proxy, because its response after _http_request() begins from `HTTP'
 	my ($self, $socket, $keyword) = @_;
-	my ($header, $rc, $buf, $http_ok);
 	
-	while(1) {
-		$rc = $self->_read_from_socket($socket, $buf, CRLF, 512);
-		
-		unless(defined($rc)) {
-			last;
-		}
-		else {
-			$header .= $buf;
-			unless($http_ok) {
-				if (length($header) >= 12) {
-					if (my ($code) = $header =~ m!^HTTP/\d\.\d (\d{3})!) {
-						if ((caller(1))[3] eq __PACKAGE__.'::is_http' && $code == 407 && $self->{noauth}) {
-							last;
-						}
-						$http_ok = 1;
-					}
-					else {
-						last;
-					}
-				}
-			}
-			
-			if(index($header, $keyword) != -1) {
-				# keyword found - ok
-				return 1;
-			}
-				
-			if($rc == 0) {
-				# no more data in the socket, keyword not found
-				last;
-			}
-				
-			if(index($header, CRLF . CRLF) != -1) {
-				# header received, but no keyword found
-				last;
-			}
-				
-			if(length($header) > 2000) {
-				# hmm, too big header
-				last;
-			}
-		}
+	$self->_read_from_socket($socket, my $headers, CRLF.CRLF, 4096)
+		or return 0;
+	my ($code) = $headers =~ m!^HTTP/\d\.\d (\d{3})!
+		or return 0;
+	if ((caller(1))[3] eq __PACKAGE__.'::is_http' && $code == 407 && $self->{noauth}) {
+		return 0;
 	}
 	
-	return 0;
+	return index($headers, $keyword) != -1;
 }
 
 sub _write_to_socket
@@ -466,6 +429,7 @@ sub _read_from_socket
 		($str_limit, $num_limit) = @_[1,2];
 	}
 	
+	my $limit_idx;
 	my $selector = IO::Select->new($socket);
 	my $start = time();
 	$_[0] = ''; # clean buffer variable like sysread() do
@@ -482,7 +446,11 @@ sub _read_from_socket
 			if($rc > 0) {
 				$num_limit -= $rc;
 				
-				if ($num_limit == 0 || (defined $str_limit && index($_[0], $str_limit) != -1)) {
+				if ($num_limit == 0 || (defined $str_limit && ($limit_idx = index($_[0], $str_limit)) != -1)) {
+					if (defined $limit_idx && $limit_idx >= 0) {
+						# cut off all after $str_limit
+						substr($_[0], $limit_idx+length($str_limit)) = '';
+					}
 					return length($_[0]);
 				}
 			}
