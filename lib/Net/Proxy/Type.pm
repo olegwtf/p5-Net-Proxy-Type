@@ -581,9 +581,12 @@ Net::Proxy::Type - Get proxy type
  	warn "$proxy1 is unknown proxy";
  }
  
- # get proxy type and do something depending returned value
+ # get proxy type and do something depending on returned value
  my $type = $proxytype->get($proxy2);
- if($type == HTTP_PROXY) {
+ if ($type == HTTPS_PROXY) {
+ 	warn "$proxy2 is https proxy";
+ }
+ elsif($type == HTTP_PROXY) {
  	warn "$proxy2 is http proxy";
  }
  elsif($type == SOCKS4_PROXY) {
@@ -605,10 +608,10 @@ Net::Proxy::Type - Get proxy type
  	warn "$proxy3 is http proxy";
  }
  elsif(defined($rv)) {
- 	warn "$proxy3 is not http proxy, but it works";
+ 	warn "$proxy3 is not http proxy, but it is connectable";
  }
  else {
- 	warn "$proxy3 doesn't work";
+ 	warn "can't connect to $proxy3";
  }
 
 =back
@@ -616,7 +619,7 @@ Net::Proxy::Type - Get proxy type
 =head1 DESCRIPTION
 
 The C<Net::Proxy::Type> is a module which can help you to get proxy type if you know host and port of the proxy server.
-Supported proxy types for now are: http proxy, socks4 proxy and socks5 proxy.
+Supported proxy types for now are: http proxy, https proxy, socks4 proxy and socks5 proxy.
 
 =head1 METHODS
 
@@ -634,12 +637,16 @@ to specify the initial state. The following options correspond to attribute meth
    read_timeout         $Net::Proxy::Type::READ_TIMEOUT 
    timeout              undef
    http_strict          undef
+   https_strict         undef
    socks4_strict        undef
    socks5_strict        undef
    strict               undef
    url                  $Net::Proxy::Type::URL
+   https_url            $Net::Proxy::Type::HTTPS_URL
    keyword              $Net::Proxy::Type::KEYWORD
+   https_keyword        $Net::Proxy::Type::HTTPS_KEYWORD
    noauth               undef
+   http_ver             $Net::Proxy::Type::HTTP_VER
 
 Description:
 
@@ -648,19 +655,23 @@ Description:
    read_timeout    - maximum number of seconds to wait until read operation success
    timeout         - set value of all *_timeout options above to this value
    http_strict     - use or not strict method to check http proxies
+   https_strict    - use or not strict method to check https proxies
    socks4_strict   - use or not strict method to check socks4 proxies
    socks5_strict   - use or not strict method to check socks5 proxies
    strict          - set value of all *_strict options above to this value (about strict checking see below)
-   url             - url which header should be checked for keyword when strict mode enabled
-   keyword         - keyword which must be found in the url header
+   url             - url which response header should be checked for keyword when strict mode enabled (for all proxy types excluding HTTPS_PROXY)
+   https_url       - url which response header should be checked for https_keyword when strict mode enabled (for HTTPS_PROXY only)
+   keyword         - keyword which must be found in the respose header for url (for all types excluding HTTPS_PROXY)
+   https_keyword   - keyword which must be found in the respose header for url (for HTTPS_PROXY only)
    noauth          - if proxy works, but authorization required, then false will be returned if noauth has true value
+   http_ver        - http version which will be used in http request when strict mode is on (one of 0.9, 1.0, 1.1), default is 1.1
 
 =item $proxytype->get($proxyaddress, $checkmask=undef)
 
 =item $proxytype->get($proxyhost, $proxyport, $checkmask=undef)
 
 Get proxy type. Checkmask allows to check proxy only for specified types, its value can be any 
-combination of the valid proxy types constants (HTTP_PROXY, SOCKS4_PROXY, SOCKS5_PROXY for now),
+combination of the valid proxy types constants (HTTPS_PROXY, HTTP_PROXY, SOCKS4_PROXY, SOCKS5_PROXY for now),
 joined with the binary OR (|) operator. Will check for all types if mask not defined. In scalar
 context returned value is proxy type - one of the module constants descibed below. In list context
 returned value is an array with proxy type as first element and connect time in seconds as second.
@@ -668,8 +679,8 @@ returned value is an array with proxy type as first element and connect time in 
 Example:
 
   # check only for socks type
-  # if it is HTTP_PROXY returned value will be UNKNOWN_PROXY
-  # because there is no check for HTTP_PROXY
+  # if it is HTTP_PROXY or HTTPS_PROXY returned value will be UNKNOWN_PROXY
+  # because there is no check for HTTP_PROXY and HTTPS_PROXY
   my $type = $proxytype->get('localhost:1080', SOCKS4_PROXY | SOCKS5_PROXY);
 
 =item $proxytype->get_as_string($proxyaddress, $checkmask=undef)
@@ -685,6 +696,12 @@ Same as get(), but returns string instead of constant. In all contexts returns o
 Check is this is http proxy. Returned value is 1 if it is http proxy, 0 if it is not http proxy
 and undef if proxy host not connectable or proxy address is not valid. In list context returns array
 where second element is connect time (empty array if proxy not connectable).
+
+=item $proxytype->is_https($proxyhost, $proxyport)
+
+Check is this is https proxy (http proxy which accepts CONNECT method). Returned value is 1 if it is https proxy, 0 if
+it is not https proxy and undef if proxy host not connectable or proxy address is not valid. In list
+context returns array where second element is connect time (empty array if proxy not connectable).
 
 =item $proxytype->is_socks4($proxyaddress)
 
@@ -732,6 +749,10 @@ Methods below gets or sets corresponding options from the constructor:
 
 =item $proxytype->http_strict($boolean)
 
+=item $proxytype->https_strict
+
+=item $proxytype->https_strict($boolean)
+
 =item $proxytype->socks4_strict
 
 =item $proxytype->socks4_strict($boolean)
@@ -740,11 +761,29 @@ Methods below gets or sets corresponding options from the constructor:
 
 =item $proxytype->socks5_strict($boolean)
 
+=item $proxytype->url
+
 =item $proxytype->url($url)
+
+=item $proxytype->https_url
+
+=item $proxytype->https_url($url)
+
+=item $proxytype->keyword
 
 =item $proxytype->keyword($keyword)
 
+=item $proxytype->https_keyword
+
+=item $proxytype->https_keyword($keyword)
+
+=item $proxytype->noauth
+
 =item $proxytype->noauth($boolean)
+
+=item $proxytype->http_ver
+
+=item $proxytype->http_ver($version)
 
 =back
 
@@ -752,9 +791,9 @@ Methods below gets or sets corresponding options from the constructor:
 
 How this module works? To check proxy type it simply do some request to the proxy server and checks response. Each proxy
 type has its own response type. For socks proxies we can do socks initialize request and response should be as its
-described in socks proxy documentation. For http proxies we can do http request to some host and check for example
-if response begins from `HTTP'. Problem is that if we, for example, will check `yahoo.com:80' for http proxy this way,
-we will get positive response, but `yahoo.com' is not a proxy it is a web server. So strict checking helps us to avoid this
+described in socks proxy documentation (same for https proxy). For http proxies we can do http request to some host and 
+check for example if response begins from `HTTP'. Problem is that if we, for example, will check `yahoo.com:80' for http proxy 
+this way, we will get positive response, but `yahoo.com' is not a proxy it is a web server. So strict checking helps us to avoid this
 problems. What we do? We send http request to the server, specified by the `url' option in the constructor via proxy and checks
 if response header contains keyword, specified by `keyword' option. If there is no keyword in the header it means
 that this proxy is not of the cheking type. This is not best solution, but it works. So strict mode recommended
@@ -772,6 +811,8 @@ Following proxy type constants available and could be imported separately or tog
 =item DEAD_PROXY
 
 =item HTTP_PROXY
+
+=item HTTPS_PROXY
 
 =item SOCKS4_PROXY
 
@@ -791,7 +832,13 @@ Following variables available (not importable):
 
 =item $URL = 'http://www.google.com/'
 
+=item $HTTPS_URL = 'https://www.google.com/'
+
 =item $KEYWORD = 'google'
+
+=item $HTTPS_KEYWORD = 'google'
+
+=item $HTTP_VER = '1.1'
 
 =item %NAME
 
@@ -801,7 +848,7 @@ Dictionary between proxy type constant and proxy type name
 
 =head1 COPYRIGHT
 
-Copyright 2010-2011 Oleg G <oleg@cpan.org>.
+Copyright 2010-2012 Oleg G <oleg@cpan.org>.
 
 This library is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
