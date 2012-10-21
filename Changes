@@ -1,5 +1,10 @@
 Revision history for Perl extension Net::Proxy::Type.
 
+0.06 Sun Oct 21 14:41:08 2012
+      - fix for `noauth' option for HTTP_PROXY
+      - HTTPS_PROXY type added
+      - `http_ver' option and $HTTP_VER variable added
+
 0.05 Thu Jun 14 17:24:32 2012
       - fix for qw() deprication warning (rt #77815)
 

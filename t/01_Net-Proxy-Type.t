@@ -24,7 +24,8 @@ my ($type, $conn_time) = $pt->get($host, $port);
 is($type, Net::Proxy::Type::DEAD_PROXY, "DEAD_PROXY in list context test");
 is($conn_time, 0, "DEAD_PROXY conn time");
 
-my ($pid, $host, $port) = make_fake_http_proxy();
+my $pid;
+($pid, $host, $port) = make_fake_http_proxy();
 is($pt->is_http($host, $port), 1, 'HTTP_PROXY');
 is($pt->is_https($host, $port), 0, 'Not HTTPS_PROXY');
 $pt->strict(1);
