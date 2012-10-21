@@ -28,6 +28,7 @@ our $URL = 'http://www.google.com/';
 our $HTTPS_URL = 'https://www.google.com/';
 our $KEYWORD = 'google';
 our $HTTPS_KEYWORD = 'google';
+our $HTTP_VER = '1.1';
 our %NAME = (
 	UNKNOWN_PROXY, 'UNKNOWN_PROXY',
 	DEAD_PROXY, 'DEAD_PROXY',
@@ -49,18 +50,19 @@ sub new
 	$self->{https_strict} = $opts{https_strict} || $opts{strict};
 	$self->{socks4_strict} = $opts{socks4_strict} || $opts{strict};
 	$self->{socks5_strict} = $opts{socks5_strict} || $opts{strict};
-	$self->url($opts{url} || $URL);
-	$self->https_url($opts{https_url} || $HTTPS_URL);
+	$self->{http_ver} = $opts{http_ver} || $HTTP_VER;
 	$self->{keyword} = $opts{keyword} || $KEYWORD;
 	$self->{https_keyword} = $opts{https_keyword} || $HTTPS_KEYWORD;
 	$self->{noauth} = $opts{noauth};
+	$self->url($opts{url} || $URL);
+	$self->https_url($opts{https_url} || $HTTPS_URL);
 	
 	$self;
 }
 
 foreach my $key (qw(
 	connect_timeout write_timeout read_timeout http_strict https_strict 
-	socks4_strict socks5_strict keyword https_keyword noauth
+	socks4_strict socks5_strict keyword https_keyword noauth http_ver
 ))
 { # generate sub's for get/set object properties using closure
       no strict 'refs';
@@ -242,7 +244,8 @@ sub is_https
 		$socket->blocking(0);
 		$self->_write_to_socket(
 			$socket, 
-			'GET ' . ($self->{https_pathquery}||'/') . ' HTTP/1.1' . CRLF . 'Host: ' . $self->{https_host} . CRLF . CRLF
+			'GET ' . ($self->{https_pathquery}||'/') . ' HTTP/' . $self->{http_ver} . CRLF . 'Host: ' . $self->{https_host} .
+			CRLF . CRLF
 		) or goto IS_HTTPS_ERROR;
 		
 		unless ($self->_is_strict_response($socket, $self->{https_keyword})) {
@@ -357,7 +360,9 @@ sub is_socks5
 sub _http_request
 { # do http request for some host
 	my ($self, $socket) = @_;
-	$self->_write_to_socket($socket, 'GET ' . $self->{url} . ' HTTP/1.1'. CRLF . 'Host: ' . $self->{host} . CRLF . CRLF);
+	$self->_write_to_socket(
+		$socket, 'GET ' . $self->{url} . ' HTTP/' . $self->{http_ver} . CRLF . 'Host: ' . $self->{host} . CRLF . CRLF
+	);
 }
 
 sub _is_strict_response
