@@ -6,7 +6,7 @@ BEGIN {
 		plan skip_all => 'Windows implementation of fork() is broken';
 	}
 	else {
-		plan tests => 11;
+		plan tests => 21;
 	}
 	use_ok('Net::Proxy::Type') 
 };
@@ -30,6 +30,22 @@ is($pt->is_http($host, $port), 1, 'HTTP_PROXY');
 is($pt->is_https($host, $port), 0, 'Not HTTPS_PROXY');
 $pt->strict(1);
 is($pt->get($host, $port), Net::Proxy::Type::HTTP_PROXY, 'get for HTTP_PROXY');
+kill 15, $pid;
+
+($pid, $host, $port) = make_broken_pipe_proxy();
+is($pt->get($host, $port), Net::Proxy::Type::UNKNOWN_PROXY, 'sig pipe test 1 for ->get()');
+is($pt->is_http($host, $port), 0, 'sig pipe test 1 for ->is_http()');
+is($pt->is_https($host, $port), 0, 'sig pipe test 1 for ->is_https()');
+is($pt->is_socks4($host, $port), 0, 'sig pipe test 1 for ->is_socks4()');
+is($pt->is_socks5($host, $port), 0, 'sig pipe test 1 for ->is_socks5()');
+kill 15, $pid;
+
+($pid, $host, $port) = make_broken_pipe_socks5_proxy();
+is($pt->get($host, $port), Net::Proxy::Type::UNKNOWN_PROXY, 'sig pipe test 2 for ->get()');
+is($pt->is_http($host, $port), 0, 'sig pipe test 2 for ->is_http()');
+is($pt->is_https($host, $port), 0, 'sig pipe test 2 for ->is_https()');
+is($pt->is_socks4($host, $port), 0, 'sig pipe test 2 for ->is_socks4()');
+is($pt->is_socks5($host, $port), 0, 'sig pipe test 2 for ->is_socks5()');
 kill 15, $pid;
 
 ($pid, $host, $port) = make_fake_https_proxy();
@@ -93,6 +109,47 @@ sub make_fake_https_proxy {
 			next if $no_headers_end;
 			my ($url) = $headers =~ m!^CONNECT (\S+) HTTP/\d.\d! or next;
 			$client->syswrite('HTTP/1.1 200 OK' . CRLF . CRLF);
+		}
+	}
+	
+	return ($child, $serv->sockhost eq "0.0.0.0" ? "127.0.0.1" : $serv->sockhost, $serv->sockport);
+}
+
+sub make_broken_pipe_proxy {
+	my $serv = IO::Socket::INET->new(Listen => 3)
+		or die $@;
+	
+	my $child = fork;
+	die 'fork: ', $! unless defined $child;
+	
+	if ($child == 0) {
+		while (1) {
+			my $client = $serv->accept()
+				or next;
+			
+			select undef, undef, undef, 0.3;
+			$client->close();
+		}
+	}
+	
+	return ($child, $serv->sockhost eq "0.0.0.0" ? "127.0.0.1" : $serv->sockhost, $serv->sockport);
+}
+
+sub make_broken_pipe_socks5_proxy {
+	my $serv = IO::Socket::INET->new(Listen => 3)
+		or die $@;
+	
+	my $child = fork;
+	die 'fork: ', $! unless defined $child;
+	
+	if ($child == 0) {
+		while (1) {
+			my $client = $serv->accept()
+				or next;
+			
+			$client->sysread(my $buf, 3);
+			$client->syswrite("\x05\x00");
+			$client->close();
 		}
 	}
 	
