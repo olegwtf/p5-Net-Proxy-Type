@@ -2,7 +2,7 @@ package Net::Proxy::Type;
 
 use strict;
 use Exporter;
-use Errno qw(EWOULDBLOCK);
+use Errno qw(EWOULDBLOCK EAGAIN);
 use Carp;
 use IO::Socket::INET qw(:DEFAULT :crlf);
 use IO::Select;
@@ -378,7 +378,7 @@ sub _is_strict_response
 	
 	$self->_read_from_socket($socket, my $headers, CRLF.CRLF, 4096)
 		or return 0;
-	my ($code) = $headers =~ m!^HTTP/\d\.\d (\d{3})!
+	my ($code) = $headers =~ m!HTTP/\d\.\d (\d{3})!
 		or return 0;
 	if ((caller(1))[3] eq __PACKAGE__.'::is_http' && $code == 407 && $self->{noauth}) {
 		return 0;
@@ -408,7 +408,7 @@ sub _write_to_socket
 				return 1;
 			}
 		}
-		elsif($! != EWOULDBLOCK) {
+		elsif($! != EWOULDBLOCK && $! != EAGAIN) {
 			# some error in the socket; will return false
 			last;
 		}
@@ -459,7 +459,7 @@ sub _read_from_socket
 				return 0;
 			}
 		}
-		elsif($! != EWOULDBLOCK) {
+		elsif($! != EWOULDBLOCK && $! != EAGAIN) {
 			last;
 		}
 	}
