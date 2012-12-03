@@ -1,5 +1,10 @@
 Revision history for Perl extension Net::Proxy::Type.
 
+0.07 Mon Dec 3 22:30:31 2012
+      - fix for possible SIGPIPE
+      - fix for strict socks5 check
+      - check $! for EAGAIN in addition to EWOULDBLOCK
+
 0.06 Sun Oct 21 14:41:08 2012
       - fix for `noauth' option for HTTP_PROXY
       - HTTPS_PROXY type added
