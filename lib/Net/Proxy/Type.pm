@@ -391,6 +391,8 @@ sub _write_to_socket
 { # write data to non-blocking socket; return 1 on success, 0 on failure (timeout or other error)
 	my ($self, $socket, $msg) = @_;
 	
+	local $SIG{PIPE} = 'IGNORE';
+	
 	my $selector = IO::Select->new($socket);
 	my $start = time();
 	while(time() - $start < $self->{write_timeout}) {
