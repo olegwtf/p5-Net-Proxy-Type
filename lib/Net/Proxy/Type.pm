@@ -13,13 +13,14 @@ use constant {
 	HTTP_PROXY    =>  1,
 	SOCKS4_PROXY  =>  2,
 	SOCKS5_PROXY  =>  4,
-	HTTPS_PROXY   =>  8
+	HTTPS_PROXY   =>  8,
+	CONNECT_PROXY =>  16,
 };
 
 our $VERSION = '0.07';
 our @ISA = qw(Exporter);
-our @EXPORT_OK = qw(HTTP_PROXY HTTPS_PROXY SOCKS4_PROXY SOCKS5_PROXY UNKNOWN_PROXY DEAD_PROXY);
-our %EXPORT_TAGS = (types => [qw(HTTP_PROXY HTTPS_PROXY SOCKS4_PROXY SOCKS5_PROXY UNKNOWN_PROXY DEAD_PROXY)]);
+our @EXPORT_OK = qw(HTTP_PROXY HTTPS_PROXY CONNECT_PROXY SOCKS4_PROXY SOCKS5_PROXY UNKNOWN_PROXY DEAD_PROXY);
+our %EXPORT_TAGS = (types => [qw(HTTP_PROXY HTTPS_PROXY CONNECT_PROXY SOCKS4_PROXY SOCKS5_PROXY UNKNOWN_PROXY DEAD_PROXY)]);
 
 our $CONNECT_TIMEOUT = 5;
 our $WRITE_TIMEOUT = 5;
@@ -34,6 +35,7 @@ our %NAME = (
 	DEAD_PROXY, 'DEAD_PROXY',
 	HTTP_PROXY, 'HTTP_PROXY',
 	HTTPS_PROXY, 'HTTPS_PROXY',
+	CONNECT_PROXY, 'CONNECT_PROXY',
 	SOCKS4_PROXY, 'SOCKS4_PROXY',
 	SOCKS5_PROXY, 'SOCKS5_PROXY',
 );
@@ -48,6 +50,7 @@ sub new
 	$self->{read_timeout} = $opts{read_timeout} || $opts{timeout} || $READ_TIMEOUT;
 	$self->{http_strict} = $opts{http_strict} || $opts{strict};
 	$self->{https_strict} = $opts{https_strict} || $opts{strict};
+	$self->{connect_strict} = $opts{connect_strict} || $opts{strict};
 	$self->{socks4_strict} = $opts{socks4_strict} || $opts{strict};
 	$self->{socks5_strict} = $opts{socks5_strict} || $opts{strict};
 	$self->{http_ver} = $opts{http_ver} || $HTTP_VER;
@@ -62,17 +65,17 @@ sub new
 
 foreach my $key (qw(
 	connect_timeout write_timeout read_timeout http_strict https_strict 
-	socks4_strict socks5_strict keyword https_keyword noauth http_ver
+	connect_strict socks4_strict socks5_strict keyword https_keyword noauth http_ver
 ))
 { # generate sub's for get/set object properties using closure
-      no strict 'refs';
-      *$key = sub
-      {
-            my $self = shift;
-      
-            return $self->{$key} = $_[0] if defined $_[0];
-            return $self->{$key};
-      }
+	no strict 'refs';
+	*$key = sub
+	{
+		my $self = shift;
+		
+		return $self->{$key} = $_[0] if defined $_[0];
+		return $self->{$key};
+	}
 }
 
 sub timeout
@@ -90,6 +93,7 @@ sub strict
 	
 	$self->{http_strict} = $strict;
 	$self->{https_strict} = $strict;
+	$self->{connect_strict} = $strict;
 	$self->{socks4_strict} = $strict;
 	$self->{socks5_strict} = $strict;
 }
@@ -138,7 +142,13 @@ sub get
 		}
 	}
 	
-	my @checkers = (HTTPS_PROXY, \&is_https, HTTP_PROXY, \&is_http, SOCKS4_PROXY, \&is_socks4, SOCKS5_PROXY, \&is_socks5);
+	my @checkers = (
+		CONNECT_PROXY, \&is_connect,
+		HTTPS_PROXY, \&is_https,
+		HTTP_PROXY, \&is_http,
+		SOCKS4_PROXY, \&is_socks4,
+		SOCKS5_PROXY, \&is_socks5
+	);
 	my $con_time = 0;
 	
 	for(my $i=0; $i<@checkers; $i+=2) {
@@ -213,6 +223,46 @@ sub is_http
 		return wantarray ? (0, $con_time) : 0;
 }
 
+sub is_connect
+{ # check is this conenct proxy
+	my ($self, $proxyaddr, $proxyport) = @_;
+	
+	my ($socket, $con_time) = $self->_create_socket($proxyaddr, $proxyport)
+		or return;
+	
+	$self->_write_to_socket(
+		$socket,
+		'CONNECT '.$self->{host}.':80 HTTP/1.1'.CRLF.'Host: '.$self->{host}.':80'.CRLF.CRLF
+	) or goto IS_CONNECT_ERROR;
+	
+	$self->_read_from_socket($socket, my $headers, CRLF.CRLF, 2000)
+		or goto IS_CONNECT_ERROR;
+	my ($code) = $headers =~ m!^HTTP/\d.\d (\d{3})!
+		or goto IS_CONNECT_ERROR;
+	if ($code == 407 && ($self->{noauth} || $self->{connect_strict})) {
+		goto IS_CONNECT_ERROR;
+	}
+	if (($code < 200 || $code >= 300) && $code != 407) {
+		goto IS_CONNECT_ERROR;
+	}
+	if ($self->{connect_strict}) {
+		unless($self->_http_request($socket)) {
+			goto IS_CONNECT_ERROR;
+		}
+		
+		unless($self->_is_strict_response($socket, $self->{keyword})) {
+			goto IS_CONNECT_ERROR;
+		}
+	}
+	
+	$socket->close();
+	return wantarray ? (1, $con_time) : 1;
+	
+	IS_CONNECT_ERROR:
+		$socket->close();
+		return wantarray() ? (0, $con_time) : 0;
+}
+
 sub is_https
 { # check is this https proxy
 	my ($self, $proxyaddr, $proxyport) = @_;
@@ -220,13 +270,9 @@ sub is_https
 	my ($socket, $con_time) = $self->_create_socket($proxyaddr, $proxyport)
 		or return;
 	
-	unless (
-		$self->_write_to_socket(
-			$socket, 'CONNECT '.$self->{https_host}.':443 HTTP/1.1'.CRLF.'Host: '.$self->{https_host}.':443'.CRLF.CRLF
-		)
-	) {
-		goto IS_HTTPS_ERROR;
-	}
+	$self->_write_to_socket(
+		$socket, 'CONNECT '.$self->{https_host}.':443 HTTP/1.1'.CRLF.'Host: '.$self->{https_host}.':443'.CRLF.CRLF
+	) or goto IS_HTTPS_ERROR;
 	
 	$self->_read_from_socket($socket, my $headers, CRLF.CRLF, 2000)
 		or goto IS_HTTPS_ERROR;
