@@ -10,7 +10,7 @@ else {
 }
 
 my $pt = Net::Proxy::Type->new();
-is($pt->get("$ENV{TEST_PROXY_HOST_AUTH}:3128"), Net::Proxy::Type::HTTPS_PROXY, 'get for http(s)');
+is($pt->get("$ENV{TEST_PROXY_HOST_AUTH}:3128"), Net::Proxy::Type::CONNECT_PROXY, 'get for http(s)');
 $pt->strict(1);
 is($pt->get("$ENV{TEST_PROXY_HOST_AUTH}:3128"), Net::Proxy::Type::UNKNOWN_PROXY, 'get for http(s) (strict)');
 $pt->strict(0);

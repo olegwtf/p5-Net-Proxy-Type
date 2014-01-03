@@ -124,33 +124,38 @@ sub https_url
 	return $self->{https_url};
 }
 
-sub get
-{ # get proxy type
-	my ($self, $proxyaddr, $proxyport, $checkmask) = @_;
+my @checkers = (
+	CONNECT_PROXY, \&is_connect,
+	HTTPS_PROXY, \&is_https,
+	HTTP_PROXY, \&is_http,
+	SOCKS4_PROXY, \&is_socks4,
+	SOCKS5_PROXY, \&is_socks5
+);
+
+sub _get
+{ # base get method
+	my $self = shift;
+	my $max  = pop;
+	my ($proxyaddr, $proxyport, $checkmask);
+	my @found;
 	
-	unless(defined($checkmask)) {
-		# (host, port) or (host:port, [mask])
-		if(my ($host, $port) = _parse_proxyaddr($proxyaddr)) {
-			# (host:port, [mask])
-			$checkmask = $proxyport;
-			$proxyaddr = $host;
-			$proxyport = $port;
+	if (@_ == 3) {
+		($proxyaddr, $proxyport, $checkmask) = @_;
+	}
+	else {
+		if (($proxyaddr, $proxyport) = _parse_proxyaddr($_[0])) {
+			$checkmask = $_[1];
 		}
-		elsif(!defined($proxyport)) {
-			# (host) - no port defined - error
-			return DEAD_PROXY;
+		elsif (@_ == 2) {
+			($proxyaddr, $proxyport) = @_;
+		}
+		else {
+			push @found, [DEAD_PROXY, 0];
+			return \@found;
 		}
 	}
 	
-	my @checkers = (
-		CONNECT_PROXY, \&is_connect,
-		HTTPS_PROXY, \&is_https,
-		HTTP_PROXY, \&is_http,
-		SOCKS4_PROXY, \&is_socks4,
-		SOCKS5_PROXY, \&is_socks5
-	);
-	my $con_time = 0;
-	
+	my ($ok, $con_time);
 	for(my $i=0; $i<@checkers; $i+=2) {
 		if(defined($checkmask)) {
 			unless($checkers[$i] & $checkmask) {
@@ -158,20 +163,31 @@ sub get
 			}
 		}
 		
-		my ($ok, $tmp_con_time) = $checkers[$i+1]->($self, $proxyaddr, $proxyport);
-		if ($tmp_con_time > $con_time) {
-			$con_time = $tmp_con_time;
-		}
+		($ok, $con_time) = $checkers[$i+1]->($self, $proxyaddr, $proxyport);
 		
 		if($ok) {
-			return wantarray ? ($checkers[$i], $con_time) : $checkers[$i];
+			push @found, [$checkers[$i], $con_time];
+			last if @found == $max;
 		}
 		elsif(!defined($ok)) {
-			return wantarray ? (DEAD_PROXY, $con_time) : DEAD_PROXY;
+			push @found, [DEAD_PROXY, 0];
+			last;
 		}
 	}
 	
-	return wantarray ? (UNKNOWN_PROXY, $con_time) : UNKNOWN_PROXY;
+	unless (@found) {
+		push @found, [UNKNOWN_PROXY, $con_time];
+	}
+	
+	return \@found;
+}
+
+sub get
+{ # get proxy type
+	my $self = shift;
+	
+	my $found = $self->_get(@_, 1);
+	return wantarray ? @{$found->[0]} : $found->[0][0];
 }
 
 sub get_as_string
@@ -180,6 +196,22 @@ sub get_as_string
 	
 	my $type = $self->get($proxyaddr, $proxyport, $checkmask);
 	return $NAME{$type};
+}
+
+sub get_all
+{ # get all proxy types
+	my $self = shift;
+	
+	my $found = $self->_get(@_, 0);
+	return @$found;
+}
+
+sub get_all_as_string
+{ # same as get_all(), but return string array
+	my $self = shift;
+	
+	my @names = map { $NAME{$_->[0]} } $self->get_all(@_);
+	return @names;
 }
 
 sub is_http
