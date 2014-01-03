@@ -203,7 +203,13 @@ sub get_all
 	my $self = shift;
 	
 	my $found = $self->_get(@_, 0);
-	return @$found;
+	if (wantarray) {
+		return @$found;
+	}
+	
+	my $types = 0;
+	$types |= $_->[0] for @$found;
+	return $types;
 }
 
 sub get_all_as_string
