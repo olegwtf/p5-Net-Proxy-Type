@@ -2,7 +2,7 @@ Net::Proxy::Type
 ===========================================
 
 The Net::Proxy::Type is a module which can help you to get proxy type if you know host and port of the proxy server.
-Supported proxy types for now are: http proxy, socks4 proxy and socks5 proxy.
+Supported proxy types for now are: http proxy, https proxy, connect proxy, socks4 proxy and socks5 proxy.
 
 INSTALLATION
 
