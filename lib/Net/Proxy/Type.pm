@@ -219,7 +219,7 @@ sub get_all_as_string
 { # same as get_all(), but return string array
 	my $self = shift;
 	
-	my @names = map { $NAME{$_->[0]} } $self->_get(@_, 0);
+	my @names = map { $NAME{$_->[0]} } @{$self->_get(@_, 0)};
 	return @names;
 }
 
