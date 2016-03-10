@@ -1,5 +1,9 @@
 Revision history for Perl extension Net::Proxy::Type.
 
+0.09 Thu Mar 10 15:01:21 NOVT 2016
+      - include User-Agent header in HTTP requests to make some servers happy
+      - fix case where keyword may be searched not only in the header, but also in the part of the body
+
 0.08 Sat Jan  4 18:21:30 NOVT 2014
       - add connect proxy support
       - add get_all() and get_all_as_string() methods
