@@ -338,7 +338,7 @@ sub is_https
 		$self->_write_to_socket(
 			$socket, 
 			'GET ' . ($self->{https_pathquery}||'/') . ' HTTP/' . $self->{http_ver} . CRLF . 'Host: ' . $self->{https_host} .
-			CRLF . CRLF
+			CRLF . 'User-Agent: Mozilla/5.0'. CRLF . CRLF
 		) or goto IS_HTTPS_ERROR;
 		
 		unless ($self->_is_strict_response($socket, $self->{https_keyword})) {
@@ -454,7 +454,8 @@ sub _http_request
 { # do http request for some host
 	my ($self, $socket) = @_;
 	$self->_write_to_socket(
-		$socket, 'GET ' . $self->{url} . ' HTTP/' . $self->{http_ver} . CRLF . 'Host: ' . $self->{host} . CRLF . CRLF
+		$socket, 'GET ' . $self->{url} . ' HTTP/' . $self->{http_ver} . CRLF . 'Host: ' . $self->{host} . 
+		CRLF . 'User-Agent: Mozilla/5.0' . CRLF . CRLF
 	);
 }
 
@@ -535,7 +536,7 @@ sub _read_from_socket
 			if($rc > 0) {
 				$num_limit -= $rc;
 				
-				if ($num_limit == 0 || (defined $str_limit && ($limit_idx = index($_[0], $str_limit)) != -1)) {
+				if ((defined $str_limit && ($limit_idx = index($_[0], $str_limit)) != -1) || $num_limit == 0) {
 					if (defined $limit_idx && $limit_idx >= 0) {
 						# cut off all after $str_limit
 						substr($_[0], $limit_idx+length($str_limit)) = '';
